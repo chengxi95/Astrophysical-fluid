@@ -19,8 +19,8 @@ class Grid(object):
     def fill_BCs(self):
 
         for i in range(self.ng):
-            self.a[self.ilo-1-i,:] = self.a[self.ihi-i,:]
-            self.a[self.ihi+1+i,:] = self.a[self.ilo+i,:]
+            self.a[self.ilo-1-i,:] = self.a[self.ilo,:]
+            self.a[self.ihi+1+i,:] = self.a[self.ihi,:]
     
     def init_cond(self,type = "Sod's problem"):
         if type == "Sod's problem":
@@ -220,6 +220,7 @@ plt.subplot(3,1,3)
 plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
+plt.savefig("Sod's problem.png")
 
 #double rarefaction
 
@@ -243,6 +244,7 @@ plt.subplot(3,1,3)
 plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
+plt.savefig("double rarefaction.png")
 
 #strong shock
 q_grid = Grid(256,2)
@@ -265,6 +267,7 @@ plt.subplot(3,1,3)
 plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
+plt.savefig("strong shock.png")
 
 #stationary shock
 q_grid = Grid(256,2)
@@ -287,8 +290,9 @@ plt.subplot(3,1,3)
 plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
+plt.savefig("stationary shock.png")
 
-plt.show()
+#plt.show()
 
 
 
