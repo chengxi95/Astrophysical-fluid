@@ -118,10 +118,6 @@ class Simulation(object):
                 slope[i] = a[i]
             elif abs(b[i]) < abs(a[i]) and (a[i])*(b[i]) > 0:
                 slope[i] = b[i]
-        #print(a)
-        #print(b)
-        #print(slope)
-        #print("")
         return slope
     
     #compute A using U
@@ -135,31 +131,35 @@ class Simulation(object):
                 
         #compute the limited slopes
         dq = np.zeros((self.q_grid.nx + 2*self.q_grid.ng,3))
+        
+        #RHS i,(i+1),(i-1) are in range(0,nx+2*ng), thus LHS i is in range(1,nx+2*ng-1)
         for i in range(1,self.q_grid.nx + 2*self.q_grid.ng - 1):
             dq[i,:] = self.minmod(self.q_grid.a[i+1,:] - self.q_grid.a[i,:],\
                                     self.q_grid.a[i,:] - self.q_grid.a[i-1,:])
-            #print([self.q_grid.a[i+1,:] - self.q_grid.a[i,:],self.q_grid.a[i,:] - self.q_grid.a[i-1,:]])
-        #print(dq)
+
         #compute the value on left and right sides of the interface
         ql = np.zeros((self.q_grid.nx + 2*self.q_grid.ng,3))
         qr = np.copy(ql)
         
         #here ql[i] and qr[i] represent ql[i-1/2] and qr[i-1/2]
-        for i in range(1,self.q_grid.nx + 2*self.q_grid.ng - 1):
-            ql[i] = self.q_grid.a[i-1,:] + 0.5*dq[i-1,:]
-            qr[i] = self.q_grid.a[i,:] - 0.5*dq[i,:]
-                
+        #RHS (i-1) and q_i are in range(1,nx+2*ng-1),thus LHS i is in range(2,nx+2*ng-1)
+        ql[2:self.q_grid.nx + 2*self.q_grid.ng-1] = self.q_grid.a[1:self.q_grid.nx + 2*self.q_grid.ng-2,:] + \
+                                                             0.5*dq[1:self.q_grid.nx + 2*self.q_grid.ng-2,:]
+        qr[2:self.q_grid.nx + 2*self.q_grid.ng-1] = self.q_grid.a[2:self.q_grid.nx + 2*self.q_grid.ng-1,:] - \
+                                                             0.5*dq[2:self.q_grid.nx + 2*self.q_grid.ng-1,:]
+        
         #solve the Riemann problem,f[i] represent F[i-1/2]
+        #i is still in range(2,nx+2*ng-1)
         f = np.zeros((self.q_grid.nx + 2*self.q_grid.ng,3))
-        for i in range(1,self.q_grid.nx + 2*self.q_grid.ng-1):
-            #print(ql[i,:],qr[i,:])
+        for i in range(2,self.q_grid.nx + 2*self.q_grid.ng-1):
             f[i,:] = riemann(ql[i,:],qr[i,:],self.gamma)
                 
         #compute A
         a = np.zeros((self.q_grid.nx + 2*self.q_grid.ng,3))
-        for i in range(1,self.q_grid.nx + 2*self.q_grid.ng-1):
-            a[i,:] = (f[i,:] - f[i+1,:])/self.q_grid.dx
-            #print(a)
+        
+        #i and (i+1) are in range(2,nx+2*ng-1), thus i is in range(2,nx+2*ng-2)
+        a[2:self.q_grid.nx + 2*self.q_grid.ng-2,:] = (f[2:self.q_grid.nx + 2*self.q_grid.ng-2,:] - f[3:self.q_grid.nx + 2*self.q_grid.ng-1,:])/self.q_grid.dx
+
         return a
         
         
@@ -168,7 +168,6 @@ class Simulation(object):
         t = 0.0
         while t < self.tmax:
             dt = self.deltat()
-            #print(t)
                         
             if t + dt > self.tmax:
                 dt = self.tmax - t
@@ -180,13 +179,16 @@ class Simulation(object):
             U_n = np.copy(self.U_grid.a)
             
             #update U_star
-            self.U_grid.a += 0.5*dt*a
+            self.U_grid.a[self.U_grid.ilo:self.U_grid.ihi+1,:] += 0.5*dt*a[self.U_grid.ilo:self.U_grid.ihi+1,:]
             
             #compute A_star using U_star
             a = self.utoa()
             
             #updata U_n to U_n+1
-            self.U_grid.a = U_n + dt*a
+            self.U_grid.a[self.U_grid.ilo:self.U_grid.ihi+1,:] = U_n[self.U_grid.ilo:self.U_grid.ihi+1,:] + dt*a[self.q_grid.ilo:self.q_grid.ihi+1,:]
+            
+            #fit BCs
+            self.U_grid.fill_BCs()
             
             #convert U to q
             self.utoq()
@@ -194,45 +196,46 @@ class Simulation(object):
             #updata time
             t += dt        
         
-        return self.q_grid.x,self.q_grid.a
+        return self.q_grid.x[self.q_grid.ilo:self.q_grid.ihi+1],self.q_grid.a[self.q_grid.ilo:self.q_grid.ihi+1,:]
 #----------------------------------------------------------------------------------------------------------------------------------------------------
 
 #Sod's problem
 q_grid = Grid(256,2)
 q_grid.init_cond(type = "Sod's problem")
-sim = Simulation(q_grid,0.15)
+sim = Simulation(q_grid,0.2)
 x,a = sim.evolve()
 plt.figure(1)
 plt.subplot(3,1,1)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,0])
+plt.plot(x,a[:,0])
 plt.xlabel("x")
 plt.ylabel("density")
 plt.title("Sod's problem")
 
 plt.subplot(3,1,2)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,1])
+plt.plot(x,a[:,1])
 plt.xlabel("x")
 plt.ylabel("velocity")
 
 plt.subplot(3,1,3)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,2])
+plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
 
 #double rarefaction
+
 q_grid = Grid(256,2)
 q_grid.init_cond(type = "double rarefaction")
 sim = Simulation(q_grid,0.15)
 x,a = sim.evolve()
 plt.figure(2)
 plt.subplot(3,1,1)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,0])
+plt.plot(x,a[:,0])
 plt.xlabel("x")
 plt.ylabel("density")
 plt.title("double rarefaction")
 
 plt.subplot(3,1,2)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,1])
+plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("velocity")
 
@@ -248,18 +251,18 @@ sim = Simulation(q_grid,0.012)
 x,a = sim.evolve()
 plt.figure(3)
 plt.subplot(3,1,1)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,0])
+plt.plot(x,a[:,0])
 plt.xlabel("x")
 plt.ylabel("density")
 plt.title("strong shock")
 
 plt.subplot(3,1,2)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,1])
+plt.plot(x,a[:,1])
 plt.xlabel("x")
 plt.ylabel("velocity")
 
 plt.subplot(3,1,3)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,2])
+plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
 
@@ -270,18 +273,18 @@ sim = Simulation(q_grid,1.0)
 x,a = sim.evolve()
 plt.figure(4)
 plt.subplot(3,1,1)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,0])
+plt.plot(x,a[:,0])
 plt.xlabel("x")
 plt.ylabel("density")
 plt.title("stationary shock")
 
 plt.subplot(3,1,2)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,1])
+plt.plot(x,a[:,1])
 plt.xlabel("x")
 plt.ylabel("velocity")
 
 plt.subplot(3,1,3)
-plt.plot(x[q_grid.ilo:q_grid.ihi+1],a[q_grid.ilo:q_grid.ihi+1,2])
+plt.plot(x,a[:,2])
 plt.xlabel("x")
 plt.ylabel("pressure")
 
